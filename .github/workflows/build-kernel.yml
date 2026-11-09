@@ -31,42 +31,32 @@ jobs:
           scripts/config --disable KERNEL_LZMA --disable KERNEL_LZO --enable KERNEL_GZIP || true
           yes "" | make oldconfig > /dev/null
           grep -E "MONTBLANC|KEYBOARD_MATRIX|^CONFIG_KERNEL_|SECCOMP=|BT_BCM4339|BCM4339=" .config
-      - name: Build test variants
+      - name: Build kernel (gzip)
         run: |
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
-          mkdir -p out
-          cp kernel/.config base.config
-          build_variant() {
-            n=$1; shift
-            cd "$GITHUB_WORKSPACE/kernel"
-            cp ../base.config .config
-            scripts/config "$@"
-            yes "" | make oldconfig > /dev/null
-            grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_SEC_DEBUG=|^CONFIG_SEC_LOG_LAST_KMSG=" .config
-            if ! make -j"$(nproc)" zImage > ../build_$n.log 2>&1; then
-              echo "=== variant $n FAILED, first errors: ==="
-              make zImage 2>&1 | grep -E "error|Error" | head -15
-              cd "$GITHUB_WORKSPACE"; return 1
-            fi
-            cd "$GITHUB_WORKSPACE"
-            ls -la kernel/arch/arm/boot/zImage
-            python3 tools/mkbootimg.py kernel/arch/arm/boot/zImage boot/stock_ramdisk.gz boot/stock_dt.img out/boot.img
-            sz=$(stat -c %s out/boot.img); echo "variant $n boot.img = $sz (limit $MAX_BOOT_BYTES)"
-            [ "$sz" -le "$MAX_BOOT_BYTES" ] || { echo "TOO LARGE"; return 1; }
-            printf 'SEANDROIDENFORCE' >> out/boot.img
-            tar -H ustar -c -C out boot.img > out/BOOT_W2014_$n.tar
-            rm out/boot.img
-          }
-          build_variant A_lzo --disable KERNEL_XZ --enable KERNEL_LZO
-          build_variant B_gzip --disable KERNEL_XZ --enable KERNEL_GZIP
-          build_variant C_lzo_debug --disable KERNEL_XZ --enable KERNEL_LZO --enable SEC_DEBUG --enable SEC_LOG_LAST_KMSG || echo "variant C could not be built"
-          sha256sum out/*.tar
+          cd kernel
+          scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --enable KERNEL_GZIP
+          yes "" | make oldconfig > /dev/null
+          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=" .config
+          make -j"$(nproc)" zImage > ../build.log 2>&1 || { make zImage 2>&1 | grep -E "error|Error" | head -20; exit 1; }
+          ls -la arch/arm/boot/zImage
+      - name: Fetch the working TWRP and swap in the new kernel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p twrp out
+          gh run download 42451273149 -R lunarreii299-ship-it/montblanc-twrp -n twrp-sm-w2014 -D twrp
+          ls -la twrp
+          tar -xf twrp/TWRP_W2014_hyb_gz.tar -C twrp
+          python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img
+          sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit 13631488)"
+          [ "$sz" -le 13631488 ] || { echo "TOO LARGE"; exit 1; }
+          printf 'SEANDROIDENFORCE' >> out/recovery.img
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_newkernel.tar
+          sha256sum RECOVERY_W2014_newkernel.tar
       - name: Upload
-        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-kernel
-          path: |
-            out/*.tar
-            build_*.log
+          name: w2014-recovery-newkernel
+          path: RECOVERY_W2014_newkernel.tar
           compression-level: 0

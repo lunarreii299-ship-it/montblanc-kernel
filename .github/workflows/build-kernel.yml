@@ -27,7 +27,7 @@ jobs:
           make lineage_hltechn_defconfig
           for o in MACH_MONTBLANC SEC_MONTBLANC_PROJECT KEYBOARD_MATRIX; do scripts/config --enable $o; done
           # Camera comes later: camera_ll needs lp8720.h (unpublished) for MONTBLANC
-          for o in MSMB_CAMERA_LL MSM_CAMERA_SENSOR; do scripts/config --disable $o; done
+          for o in MSMB_CAMERA_LL MSM_CAMERA_SENSOR LEDS_MAX77803; do scripts/config --disable $o; done
           scripts/config --disable KERNEL_LZMA --disable KERNEL_LZO --enable KERNEL_GZIP || true
           yes "" | make oldconfig > /dev/null
           grep -E "MONTBLANC|KEYBOARD_MATRIX|^CONFIG_KERNEL_|SECCOMP=|BT_BCM4339|BCM4339=" .config

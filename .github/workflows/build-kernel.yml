@@ -33,7 +33,11 @@ jobs:
         working-directory: kernel
         run: |
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
-          make -j"$(nproc)" zImage 2>&1 | tee ../build.log | tail -40
+          make -j"$(nproc)" zImage > ../build.log 2>&1 || {
+            echo "=== parallel build failed, re-running to find the first error ==="
+            make zImage 2>&1 | grep -v -E "^\s+(CC|LD|AR|AS|HOSTCC|GEN|CHK|UPD|LDS)\s" | tail -60
+            exit 1
+          }
           ls -la arch/arm/boot/zImage
       - name: Pack boot image (new kernel + stock ramdisk + stock dt)
         run: |

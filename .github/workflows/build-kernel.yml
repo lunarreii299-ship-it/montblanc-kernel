@@ -28,7 +28,7 @@ jobs:
           for o in MACH_MONTBLANC SEC_MONTBLANC_PROJECT KEYBOARD_MATRIX; do scripts/config --enable $o; done
           scripts/config --disable KERNEL_LZMA --disable KERNEL_LZO --enable KERNEL_GZIP || true
           yes "" | make oldconfig > /dev/null
-          grep -E "MONTBLANC|KEYBOARD_MATRIX|KERNEL_(GZIP|LZO|LZMA)|SECCOMP=|BT_BCM4339|BCM4339=" .config
+          grep -E "MONTBLANC|KEYBOARD_MATRIX|^CONFIG_KERNEL_|SECCOMP=|BT_BCM4339|BCM4339=" .config
       - name: Build zImage
         working-directory: kernel
         run: |

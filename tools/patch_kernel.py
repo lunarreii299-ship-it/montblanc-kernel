@@ -33,3 +33,10 @@ n = s.count(old)
 s = s.replace(old, new)
 b.write_text(s)
 print('board-8974.c: widened keypad guard in', n, 'places')
+
+# The tree's gcc wrapper is Python 2 only; make it a plain pass-through.
+w = k / 'scripts/gcc-wrapper.py'
+if w.exists():
+    w.write_text('#!/bin/sh\nexec "$@"\n')
+    w.chmod(0o755)
+    print('gcc-wrapper.py replaced with pass-through')

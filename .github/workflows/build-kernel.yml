@@ -36,8 +36,9 @@ jobs:
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
           cd kernel
           scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --enable KERNEL_GZIP
+          scripts/config --enable FRAMEBUFFER_CONSOLE --enable FONT_SUPPORT --enable FONTS --enable FONT_8x16
           yes "" | make oldconfig > /dev/null
-          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=" .config
+          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_FRAMEBUFFER_CONSOLE=|^CONFIG_VT_CONSOLE=|^CONFIG_FONT_8x16=" .config
           make -j"$(nproc)" zImage > ../build.log 2>&1 || { make zImage 2>&1 | grep -E "error|Error" | head -20; exit 1; }
           ls -la arch/arm/boot/zImage
       - name: Fetch the working TWRP and swap in the new kernel
@@ -48,15 +49,15 @@ jobs:
           gh run download 42451273149 -R lunarreii299-ship-it/montblanc-twrp -n twrp-sm-w2014 -D twrp
           ls -la twrp
           tar -xf twrp/TWRP_W2014_hyb_gz.tar -C twrp
-          python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img
+          python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img "console=tty0 ignore_loglevel panic=0 androidboot.hardware=qcom user_debug=31 msm_rtb.filter=0x3F androidboot.selinux=permissive"
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit 13631488)"
           [ "$sz" -le 13631488 ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_newkernel.tar
-          sha256sum RECOVERY_W2014_newkernel.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_dbg.tar
+          sha256sum RECOVERY_W2014_dbg.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-newkernel
-          path: RECOVERY_W2014_newkernel.tar
+          name: w2014-recovery-dbg
+          path: RECOVERY_W2014_dbg.tar
           compression-level: 0

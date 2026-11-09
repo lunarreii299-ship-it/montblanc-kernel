@@ -13,6 +13,8 @@ s = d[o:o+ssz]; o += n(ssz)
 dt = d[o:o+dtsz]
 K = open(kern, 'rb').read()
 hdr = bytearray(d[:page])
+if len(sys.argv) > 4:
+    hdr[64:576] = sys.argv[4].encode().ljust(512, b'\0')
 struct.pack_into('<I', hdr, 8, len(K))
 h = hashlib.sha1()
 for b in (K, r, s, dt):

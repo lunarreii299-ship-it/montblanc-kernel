@@ -1,0 +1,57 @@
+name: Build KK baseline (Note 3 N9005 KitKat source)
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Variant defconfig"
+        default: "msm8974_sec_h3g_chn_defconfig"
+env:
+  MAX_RECOVERY_BYTES: 13631488
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y bc bison flex libssl-dev lzop python3
+      - name: Fetch Samsung KitKat kernel (pristine drop) and toolchain
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/friedrich420/Note-3-AEL-Kernel kernel
+          git -C kernel checkout aa26888
+          git -C kernel log -1 --format='%h %ad %s' --date=short
+          git clone --depth 1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain
+      - name: Make the python2 gcc wrapper a pass-through
+        run: printf '#!/bin/sh\nexec "$@"\n' > kernel/scripts/gcc-wrapper.py && chmod +x kernel/scripts/gcc-wrapper.py
+      - name: Configure and build (gzip)
+        run: |
+          export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
+          cd kernel
+          make HOSTCFLAGS=-fcommon msm8974_sec_defconfig VARIANT_DEFCONFIG=${{ inputs.variant }} SELINUX_DEFCONFIG=selinux_defconfig
+          scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --disable KERNEL_LZMA --enable KERNEL_GZIP
+          yes "" | make HOSTCFLAGS=-fcommon oldconfig > /dev/null
+          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP|LZMA)=|^CONFIG_MACH_|^CONFIG_SEC_.*PROJECT" .config
+          make -j"$(nproc)" HOSTCFLAGS=-fcommon zImage > ../build.log 2>&1 || {
+            echo "=== build failed, first errors ==="
+            make HOSTCFLAGS=-fcommon zImage 2>&1 | grep -E "error|Error|undefined reference" | head -20
+            exit 1
+          }
+          ls -la arch/arm/boot/zImage
+      - name: Put the new kernel into the working TWRP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p twrp out
+          gh run download 42451273149 -R lunarreii299-ship-it/montblanc-twrp -n twrp-sm-w2014 -D twrp
+          tar -xf twrp/TWRP_W2014_hyb_gz.tar -C twrp
+          python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img
+          sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
+          [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
+          printf 'SEANDROIDENFORCE' >> out/recovery.img
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_kk_baseline.tar
+          sha256sum RECOVERY_W2014_kk_baseline.tar
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: w2014-recovery-kk-baseline
+          path: RECOVERY_W2014_kk_baseline.tar
+          compression-level: 0

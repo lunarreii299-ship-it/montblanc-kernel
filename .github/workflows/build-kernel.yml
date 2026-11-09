@@ -46,9 +46,9 @@ jobs:
             if make -j"$(nproc)" zImage > ../build.log 2>&1; then ok=1; echo "=== built OK ==="; else
               echo "--- failed, first errors:"; make zImage 2>&1 | grep -E "error|undefined reference" | head -8; fi
           }
-          try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_SCHED_LOG
-          [ $ok = 1 ] || try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_SCHED_LOG --enable SEC_DEBUG_SEMAPHORE_LOG --enable SEC_DEBUG_SUBSYS
-          [ $ok = 1 ] || try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_SCHED_LOG --enable SEC_DEBUG_SEMAPHORE_LOG --enable SEC_DEBUG_SUBSYS --enable SEC_DEBUG_MSG_LOG --enable SEC_DEBUG_AVC_LOG
+          try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_NOCACHE_LOG_IN_LEVEL_LOW --enable SEC_DEBUG_SCHED_LOG
+          [ $ok = 1 ] || try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_NOCACHE_LOG_IN_LEVEL_LOW --enable SEC_DEBUG_SCHED_LOG --enable SEC_DEBUG_SEMAPHORE_LOG --enable SEC_DEBUG_SUBSYS
+          [ $ok = 1 ] || try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_NOCACHE_LOG_IN_LEVEL_LOW --enable SEC_DEBUG_SCHED_LOG --enable SEC_DEBUG_SEMAPHORE_LOG --enable SEC_DEBUG_SUBSYS --enable SEC_DEBUG_MSG_LOG --enable SEC_DEBUG_AVC_LOG
           [ $ok = 1 ] || { echo "no option set compiled"; exit 1; }
           ls -la arch/arm/boot/zImage
       - name: Pack boot image (new kernel + stock ramdisk + stock dt)

@@ -1,0 +1,55 @@
+name: Build W2014 kernel
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "LineageOS kernel branch"
+        default: "lineage-18.1"
+env:
+  MAX_BOOT_BYTES: 11534336   # boot partition (0xB00000)
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y bc bison flex libssl-dev lzop python3
+      - name: Fetch kernel + toolchain
+        run: |
+          git clone --depth 1 -b "${{ inputs.branch }}" https://github.com/LineageOS/android_kernel_samsung_msm8974 kernel
+          git clone --depth 1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain
+      - name: Patch tree for Montblanc
+        run: python3 tools/patch_kernel.py kernel
+      - name: Configure
+        working-directory: kernel
+        run: |
+          export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
+          make lineage_hltechn_defconfig
+          for o in MACH_MONTBLANC SEC_MONTBLANC_PROJECT KEYBOARD_MATRIX; do scripts/config --enable $o; done
+          scripts/config --disable KERNEL_LZMA --disable KERNEL_LZO --enable KERNEL_GZIP || true
+          yes "" | make oldconfig > /dev/null
+          grep -E "MONTBLANC|KEYBOARD_MATRIX|KERNEL_(GZIP|LZO|LZMA)|SECCOMP=|BT_BCM4339|BCM4339=" .config
+      - name: Build zImage
+        working-directory: kernel
+        run: |
+          export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
+          make -j"$(nproc)" zImage 2>&1 | tee ../build.log | tail -40
+          ls -la arch/arm/boot/zImage
+      - name: Pack boot image (new kernel + stock ramdisk + stock dt)
+        run: |
+          mkdir out
+          python3 tools/mkbootimg.py kernel/arch/arm/boot/zImage boot/stock_ramdisk.gz boot/stock_dt.img out/boot.img
+          sz=$(stat -c %s out/boot.img); echo "boot.img = $sz bytes (limit $MAX_BOOT_BYTES)"
+          [ "$sz" -le "$MAX_BOOT_BYTES" ] || { echo "TOO LARGE"; exit 1; }
+          printf 'SEANDROIDENFORCE' >> out/boot.img
+          tar -H ustar -c -C out boot.img > out/BOOT_W2014_test.tar
+          sha256sum out/BOOT_W2014_test.tar
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w2014-kernel
+          path: |
+            out/BOOT_W2014_test.tar
+            build.log
+          compression-level: 0

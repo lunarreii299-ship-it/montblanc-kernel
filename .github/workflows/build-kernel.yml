@@ -31,31 +31,42 @@ jobs:
           scripts/config --disable KERNEL_LZMA --disable KERNEL_LZO --enable KERNEL_GZIP || true
           yes "" | make oldconfig > /dev/null
           grep -E "MONTBLANC|KEYBOARD_MATRIX|^CONFIG_KERNEL_|SECCOMP=|BT_BCM4339|BCM4339=" .config
-      - name: Build zImage
-        working-directory: kernel
+      - name: Build test variants
         run: |
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
-          make -j"$(nproc)" zImage > ../build.log 2>&1 || {
-            echo "=== parallel build failed, re-running to find the first error ==="
-            make zImage 2>&1 | grep -v -E "^\s+(CC|LD|AR|AS|HOSTCC|GEN|CHK|UPD|LDS)\s" | tail -60
-            exit 1
+          mkdir -p out
+          cp kernel/.config base.config
+          build_variant() {
+            n=$1; shift
+            cd "$GITHUB_WORKSPACE/kernel"
+            cp ../base.config .config
+            scripts/config "$@"
+            yes "" | make oldconfig > /dev/null
+            grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_SEC_DEBUG=|^CONFIG_SEC_LOG_LAST_KMSG=" .config
+            if ! make -j"$(nproc)" zImage > ../build_$n.log 2>&1; then
+              echo "=== variant $n FAILED, first errors: ==="
+              make zImage 2>&1 | grep -E "error|Error" | head -15
+              cd "$GITHUB_WORKSPACE"; return 1
+            fi
+            cd "$GITHUB_WORKSPACE"
+            ls -la kernel/arch/arm/boot/zImage
+            python3 tools/mkbootimg.py kernel/arch/arm/boot/zImage boot/stock_ramdisk.gz boot/stock_dt.img out/boot.img
+            sz=$(stat -c %s out/boot.img); echo "variant $n boot.img = $sz (limit $MAX_BOOT_BYTES)"
+            [ "$sz" -le "$MAX_BOOT_BYTES" ] || { echo "TOO LARGE"; return 1; }
+            printf 'SEANDROIDENFORCE' >> out/boot.img
+            tar -H ustar -c -C out boot.img > out/BOOT_W2014_$n.tar
+            rm out/boot.img
           }
-          ls -la arch/arm/boot/zImage
-      - name: Pack boot image (new kernel + stock ramdisk + stock dt)
-        run: |
-          mkdir out
-          python3 tools/mkbootimg.py kernel/arch/arm/boot/zImage boot/stock_ramdisk.gz boot/stock_dt.img out/boot.img
-          sz=$(stat -c %s out/boot.img); echo "boot.img = $sz bytes (limit $MAX_BOOT_BYTES)"
-          [ "$sz" -le "$MAX_BOOT_BYTES" ] || { echo "TOO LARGE"; exit 1; }
-          printf 'SEANDROIDENFORCE' >> out/boot.img
-          tar -H ustar -c -C out boot.img > out/BOOT_W2014_test.tar
-          sha256sum out/BOOT_W2014_test.tar
+          build_variant A_lzo --disable KERNEL_XZ --enable KERNEL_LZO
+          build_variant B_gzip --disable KERNEL_XZ --enable KERNEL_GZIP
+          build_variant C_lzo_debug --disable KERNEL_XZ --enable KERNEL_LZO --enable SEC_DEBUG --enable SEC_LOG_LAST_KMSG || echo "variant C could not be built"
+          sha256sum out/*.tar
       - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: w2014-kernel
           path: |
-            out/BOOT_W2014_test.tar
-            build.log
+            out/*.tar
+            build_*.log
           compression-level: 0

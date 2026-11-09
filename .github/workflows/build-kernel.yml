@@ -31,33 +31,38 @@ jobs:
           scripts/config --disable KERNEL_LZMA --disable KERNEL_LZO --enable KERNEL_GZIP || true
           yes "" | make oldconfig > /dev/null
           grep -E "MONTBLANC|KEYBOARD_MATRIX|^CONFIG_KERNEL_|SECCOMP=|BT_BCM4339|BCM4339=" .config
-      - name: Build kernel (gzip)
+      - name: Build kernel with the Samsung crash-log buffer (gzip)
         run: |
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
           cd kernel
-          scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --enable KERNEL_GZIP
-          scripts/config --enable VT --enable VT_CONSOLE --enable FRAMEBUFFER_CONSOLE --disable FONTS
-          yes "" | make oldconfig > /dev/null
-          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_FRAMEBUFFER_CONSOLE=|^CONFIG_VT_CONSOLE=|^CONFIG_FONT_8x16=|^CONFIG_FONTS=" .config
-          make -j"$(nproc)" zImage > ../build.log 2>&1 || { make zImage 2>&1 | grep -E "error|Error" | head -20; exit 1; }
+          cp .config ../base.config
+          ok=0
+          try_cfg() {
+            echo "=== trying: $* ==="
+            cp ../base.config .config
+            scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --enable KERNEL_GZIP "$@"
+            yes "" | make oldconfig > /dev/null
+            grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_SEC_DEBUG[A-Z_]*=" .config
+            if make -j"$(nproc)" zImage > ../build.log 2>&1; then ok=1; echo "=== built OK ==="; else
+              echo "--- failed, first errors:"; make zImage 2>&1 | grep -E "error|undefined reference" | head -8; fi
+          }
+          try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_SCHED_LOG
+          [ $ok = 1 ] || try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_SCHED_LOG --enable SEC_DEBUG_SEMAPHORE_LOG --enable SEC_DEBUG_SUBSYS
+          [ $ok = 1 ] || try_cfg --enable SEC_DEBUG --enable SEC_DEBUG_SCHED_LOG --enable SEC_DEBUG_SEMAPHORE_LOG --enable SEC_DEBUG_SUBSYS --enable SEC_DEBUG_MSG_LOG --enable SEC_DEBUG_AVC_LOG
+          [ $ok = 1 ] || { echo "no option set compiled"; exit 1; }
           ls -la arch/arm/boot/zImage
-      - name: Fetch the working TWRP and swap in the new kernel
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Pack boot image (new kernel + stock ramdisk + stock dt)
         run: |
-          mkdir -p twrp out
-          gh run download 42451273149 -R lunarreii299-ship-it/montblanc-twrp -n twrp-sm-w2014 -D twrp
-          ls -la twrp
-          tar -xf twrp/TWRP_W2014_hyb_gz.tar -C twrp
-          python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img "console=tty0 ignore_loglevel panic=0 androidboot.hardware=qcom user_debug=31 msm_rtb.filter=0x3F androidboot.selinux=permissive"
-          sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit 13631488)"
-          [ "$sz" -le 13631488 ] || { echo "TOO LARGE"; exit 1; }
-          printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_dbg.tar
-          sha256sum RECOVERY_W2014_dbg.tar
+          mkdir -p out
+          python3 tools/mkbootimg.py kernel/arch/arm/boot/zImage boot/stock_ramdisk.gz boot/stock_dt.img out/boot.img
+          sz=$(stat -c %s out/boot.img); echo "boot.img = $sz (limit $MAX_BOOT_BYTES)"
+          [ "$sz" -le "$MAX_BOOT_BYTES" ] || { echo "TOO LARGE"; exit 1; }
+          printf 'SEANDROIDENFORCE' >> out/boot.img
+          tar -H ustar -c -C out boot.img > BOOT_W2014_dbglog.tar
+          sha256sum BOOT_W2014_dbglog.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-dbg
-          path: RECOVERY_W2014_dbg.tar
+          name: w2014-boot-dbglog
+          path: BOOT_W2014_dbglog.tar
           compression-level: 0

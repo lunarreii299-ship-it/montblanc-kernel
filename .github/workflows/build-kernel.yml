@@ -36,9 +36,9 @@ jobs:
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
           cd kernel
           scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --enable KERNEL_GZIP
-          scripts/config --enable FRAMEBUFFER_CONSOLE --enable FONT_SUPPORT --enable FONTS --enable FONT_8x16
+          scripts/config --enable VT --enable VT_CONSOLE --enable FRAMEBUFFER_CONSOLE --disable FONTS
           yes "" | make oldconfig > /dev/null
-          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_FRAMEBUFFER_CONSOLE=|^CONFIG_VT_CONSOLE=|^CONFIG_FONT_8x16=" .config
+          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP)=|^CONFIG_FRAMEBUFFER_CONSOLE=|^CONFIG_VT_CONSOLE=|^CONFIG_FONT_8x16=|^CONFIG_FONTS=" .config
           make -j"$(nproc)" zImage > ../build.log 2>&1 || { make zImage 2>&1 | grep -E "error|Error" | head -20; exit 1; }
           ls -la arch/arm/boot/zImage
       - name: Fetch the working TWRP and swap in the new kernel

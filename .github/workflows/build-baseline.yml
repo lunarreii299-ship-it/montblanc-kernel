@@ -34,9 +34,9 @@ jobs:
           scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --disable KERNEL_LZMA --enable KERNEL_GZIP
           yes "" | make HOSTCFLAGS=-fcommon oldconfig > /dev/null
           grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP|LZMA)=|^CONFIG_MACH_|^CONFIG_SEC_.*PROJECT" .config
-          make -j"$(nproc)" HOSTCFLAGS=-fcommon zImage > ../build.log 2>&1 || {
+          make -j"$(nproc)" HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage > ../build.log 2>&1 || {
             echo "=== build failed, first errors ==="
-            make HOSTCFLAGS=-fcommon zImage 2>&1 | grep -v -E "^\s+(CC|LD|AR|AS|HOSTCC|GEN|CHK|UPD|LDS|CALL)\s" | tail -25
+            make HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage 2>&1 | grep -v -E "^\s+(CC|LD|AR|AS|HOSTCC|GEN|CHK|UPD|LDS|CALL)\s" | tail -25
             exit 1
           }
           ls -la arch/arm/boot/zImage

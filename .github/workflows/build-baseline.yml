@@ -22,6 +22,10 @@ jobs:
           git clone --depth 1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain
       - name: Make the python2 gcc wrapper a pass-through
         run: printf '#!/bin/sh\nexec "$@"\n' > kernel/scripts/gcc-wrapper.py && chmod +x kernel/scripts/gcc-wrapper.py
+      - name: Fix old Perl construct that modern Perl rejects
+        run: |
+          sed -i 's/if (!defined(@val))/if (!@val)/' kernel/kernel/timeconst.pl
+          grep -n "if (!@val)" kernel/kernel/timeconst.pl
       - name: Configure and build (gzip)
         run: |
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
@@ -32,7 +36,7 @@ jobs:
           grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP|LZMA)=|^CONFIG_MACH_|^CONFIG_SEC_.*PROJECT" .config
           make -j"$(nproc)" HOSTCFLAGS=-fcommon zImage > ../build.log 2>&1 || {
             echo "=== build failed, first errors ==="
-            make HOSTCFLAGS=-fcommon zImage 2>&1 | grep -E "error|Error|undefined reference" | head -20
+            make HOSTCFLAGS=-fcommon zImage 2>&1 | grep -v -E "^\s+(CC|LD|AR|AS|HOSTCC|GEN|CHK|UPD|LDS|CALL)\s" | tail -25
             exit 1
           }
           ls -la arch/arm/boot/zImage

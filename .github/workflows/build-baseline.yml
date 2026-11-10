@@ -5,6 +5,9 @@ on:
       variant:
         description: "Variant defconfig"
         default: "msm8974_sec_h3g_chn_defconfig"
+      stock_payload:
+        description: "Control test: wrap the STOCK kernel Image with this build's loader (true/false)"
+        default: "false"
 env:
   MAX_RECOVERY_BYTES: 13631488
 jobs:
@@ -40,6 +43,18 @@ jobs:
             exit 1
           }
           ls -la arch/arm/boot/zImage
+      - name: Control test - replace the kernel payload with the stock kernel Image
+        if: ${{ inputs.stock_payload == 'true' }}
+        run: |
+          export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
+          python3 tools/extract_stock_image.py boot/stock_kernel stock_Image
+          ls -la stock_Image kernel/arch/arm/boot/Image
+          cp stock_Image kernel/arch/arm/boot/Image
+          touch kernel/arch/arm/boot/Image
+          cd kernel
+          rm -f arch/arm/boot/zImage
+          make HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage 2>&1 | tail -15
+          ls -la arch/arm/boot/zImage
       - name: Put the new kernel into the working TWRP
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,11 +66,11 @@ jobs:
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
           [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_kk_baseline.tar
-          sha256sum RECOVERY_W2014_kk_baseline.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control' || 'kk_baseline' }}.tar
+          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control' || 'kk_baseline' }}.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-kk-baseline
-          path: RECOVERY_W2014_kk_baseline.tar
+          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control' || 'kk-baseline' }}
+          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control' || 'kk_baseline' }}.tar
           compression-level: 0

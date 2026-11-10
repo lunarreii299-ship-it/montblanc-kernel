@@ -55,6 +55,23 @@ jobs:
           rm -f arch/arm/boot/zImage
           make HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage 2>&1 | tail -15
           ls -la arch/arm/boot/zImage
+      - name: Diagnose - compare my loader stub with the stock one
+        if: always()
+        run: |
+          export CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
+          cd kernel
+          echo "== sizes"; ls -l ../boot/stock_kernel arch/arm/boot/zImage arch/arm/boot/Image arch/arm/boot/compressed/ 2>&1 | head -40
+          echo "== stock zImage first 112 bytes"; xxd -l 112 ../boot/stock_kernel
+          echo "== my zImage first 112 bytes"; xxd -l 112 arch/arm/boot/zImage
+          echo "== my zImage last 16 bytes"; tail -c 16 arch/arm/boot/zImage | xxd
+          echo "== stock zImage last 16 bytes"; tail -c 16 ../boot/stock_kernel | xxd
+          head -c 6196 ../boot/stock_kernel > ../stock_stub.bin
+          head -c 6196 arch/arm/boot/zImage > ../my_stub.bin
+          echo "== DISASM stock stub (first 120)"; ${CROSS_COMPILE}objdump -D -b binary -marm ../stock_stub.bin | sed -n 1,130p
+          echo "== DISASM my stub (first 120)"; ${CROSS_COMPILE}objdump -D -b binary -marm ../my_stub.bin | sed -n 1,130p
+          echo "== my stub ELF sections"; ${CROSS_COMPILE}readelf -S arch/arm/boot/compressed/vmlinux | head -30
+          echo "== relevant config"; grep -E "AUTO_ZRELADDR|ZBOOT_ROM|APPENDED_DTB|ARM_PATCH_PHYS|PHYS_OFFSET|CPU_V7|THUMB2|ARM_ASM_UNIFIED|CPU_ENDIAN|XIP_KERNEL|ARCH_MSM8974|KERNEL_(GZIP|LZO|LZMA|XZ)" .config
+          echo "== Makefile.boot (msm)"; grep -n "8974\|zreladdr\|params_phys\|initrd_phys" arch/arm/mach-msm/Makefile.boot | head
       - name: Put the new kernel into the working TWRP
         env:
           GH_TOKEN: ${{ github.token }}

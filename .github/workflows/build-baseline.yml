@@ -5,9 +5,6 @@ on:
       variant:
         description: "Variant defconfig"
         default: "msm8974_sec_h3g_chn_defconfig"
-      stock_payload:
-        description: "Control test: wrap the STOCK kernel Image with this build's loader (true/false)"
-        default: "false"
 env:
   MAX_RECOVERY_BYTES: 13631488
 jobs:
@@ -35,25 +32,15 @@ jobs:
           cd kernel
           make HOSTCFLAGS=-fcommon msm8974_sec_defconfig VARIANT_DEFCONFIG=${{ inputs.variant }} SELINUX_DEFCONFIG=selinux_defconfig
           scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --disable KERNEL_LZMA --enable KERNEL_GZIP
+          # Stock W2014 kernel was an ENG build WITHOUT FIPS; FIPS makes the loader copy the zImage to 0x20000000 first
+          scripts/config --disable CRYPTO_FIPS
           yes "" | make HOSTCFLAGS=-fcommon oldconfig > /dev/null
-          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP|LZMA)=|^CONFIG_MACH_|^CONFIG_SEC_.*PROJECT" .config
+          grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP|LZMA)=|^CONFIG_MACH_|^CONFIG_SEC_.*PROJECT|CRYPTO_FIPS" .config
           make -j"$(nproc)" HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage > ../build.log 2>&1 || {
             echo "=== build failed, first errors ==="
             make HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage 2>&1 | grep -v -E "^\s+(CC|LD|AR|AS|HOSTCC|GEN|CHK|UPD|LDS|CALL)\s" | tail -25
             exit 1
           }
-          ls -la arch/arm/boot/zImage
-      - name: Control test - replace the kernel payload with the stock kernel Image
-        if: ${{ inputs.stock_payload == 'true' }}
-        run: |
-          export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
-          python3 tools/extract_stock_image.py boot/stock_kernel stock_Image
-          ls -la stock_Image kernel/arch/arm/boot/Image
-          cp stock_Image kernel/arch/arm/boot/Image
-          touch kernel/arch/arm/boot/Image
-          cd kernel
-          rm -f arch/arm/boot/zImage
-          make HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage 2>&1 | tail -15
           ls -la arch/arm/boot/zImage
       - name: Diagnose - compare my loader stub with the stock one
         if: always()
@@ -83,11 +70,11 @@ jobs:
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
           [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control' || 'kk_baseline' }}.tar
-          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control' || 'kk_baseline' }}.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_kk_nofips.tar
+          sha256sum RECOVERY_W2014_kk_nofips.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control' || 'kk-baseline' }}
-          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control' || 'kk_baseline' }}.tar
+          name: w2014-recovery-kk-nofips
+          path: RECOVERY_W2014_kk_nofips.tar
           compression-level: 0

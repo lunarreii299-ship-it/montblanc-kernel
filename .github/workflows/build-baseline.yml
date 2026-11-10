@@ -5,6 +5,9 @@ on:
       variant:
         description: "Variant defconfig"
         default: "msm8974_sec_h3g_chn_defconfig"
+      stock_payload:
+        description: "Control test: put the STOCK kernel Image inside this build's loader (true/false)"
+        default: "false"
 env:
   MAX_RECOVERY_BYTES: 13631488
 jobs:
@@ -42,6 +45,19 @@ jobs:
             exit 1
           }
           ls -la arch/arm/boot/zImage
+      - name: Control test - stock kernel Image inside this build's loader
+        if: ${{ inputs.stock_payload == 'true' }}
+        run: |
+          export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
+          python3 tools/extract_stock_image.py boot/stock_kernel "$GITHUB_WORKSPACE/stock_Image"
+          printf '%s\n' '#!/bin/sh' 'for last; do :; done' 'case "$last" in */boot/Image) cp "$STOCK_IMAGE" "$last"; exit 0;; esac' 'exec "$REAL_OBJCOPY" "$@"' > objcopy-wrap.sh
+          chmod +x objcopy-wrap.sh
+          export STOCK_IMAGE="$GITHUB_WORKSPACE/stock_Image" REAL_OBJCOPY="${CROSS_COMPILE}objcopy"
+          cd kernel
+          rm -f arch/arm/boot/Image arch/arm/boot/zImage arch/arm/boot/compressed/piggy.gzip arch/arm/boot/compressed/piggy.gzip.o arch/arm/boot/compressed/vmlinux
+          make HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y OBJCOPY="$GITHUB_WORKSPACE/objcopy-wrap.sh" zImage 2>&1 | tail -12
+          cmp arch/arm/boot/Image "$STOCK_IMAGE" && echo "CONFIRMED: arch/arm/boot/Image is byte-identical to the STOCK kernel"
+          ls -la arch/arm/boot/Image arch/arm/boot/zImage
       - name: Diagnose - compare my loader stub with the stock one
         if: always()
         run: |
@@ -70,11 +86,11 @@ jobs:
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
           [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_kk_nofips.tar
-          sha256sum RECOVERY_W2014_kk_nofips.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || 'kk_nofips' }}.tar
+          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || 'kk_nofips' }}.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-kk-nofips
-          path: RECOVERY_W2014_kk_nofips.tar
+          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || 'kk-nofips' }}
+          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || 'kk_nofips' }}.tar
           compression-level: 0

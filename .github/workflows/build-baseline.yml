@@ -29,12 +29,10 @@ jobs:
           git -C kernel checkout aa26888
           git -C kernel log -1 --format='%h %ad %s' --date=short
           if [ "${{ inputs.gcc }}" = "4.7" ]; then
-            ok=0
-            for r in LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.7 LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-eabi-4.7 TeamWin/android_prebuilts_gcc_linux-x86_arm_arm-eabi-4.7 CyanogenMod/android_prebuilt_linux-x86_toolchain_arm-eabi-4.7 ; do
-              echo "trying $r"; git clone --depth 1 https://github.com/$r toolchain 2>/dev/null && { ok=1; break; }
-            done
-            [ $ok = 1 ] || { echo "no 4.7 toolchain found"; exit 1; }
-            for f in toolchain/bin/arm-eabi-*; do [ -e "$f" ] && ln -sf "$(basename $f)" "toolchain/bin/arm-linux-androideabi-${f##*/arm-eabi-}"; done
+            # Android NDK r8e ships gcc 4.7 for ARM (same generation as Samsung's arm-eabi-4.7)
+            curl -fsSL -o ndk.tar.bz2 https://dl.google.com/android/ndk/android-ndk-r8e-linux-x86_64.tar.bz2
+            tar -xjf ndk.tar.bz2 --wildcards 'android-ndk-r8e/toolchains/arm-linux-androideabi-4.7/prebuilt/linux-x86_64/*'
+            mv android-ndk-r8e/toolchains/arm-linux-androideabi-4.7/prebuilt/linux-x86_64 toolchain
             ls toolchain/bin | head
             toolchain/bin/arm-linux-androideabi-gcc --version | head -1
           else

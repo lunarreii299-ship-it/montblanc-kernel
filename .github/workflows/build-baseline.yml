@@ -8,6 +8,9 @@ on:
       stock_payload:
         description: "Control test: put the STOCK kernel Image inside this build's loader (true/false)"
         default: "false"
+      strip:
+        description: "Disable Samsung debug/TIMA/security extras that stock W2014 may not use (true/false)"
+        default: "false"
 env:
   MAX_RECOVERY_BYTES: 13631488
 jobs:
@@ -37,6 +40,9 @@ jobs:
           scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --disable KERNEL_LZMA --enable KERNEL_GZIP
           # Stock W2014 kernel was an ENG build WITHOUT FIPS; FIPS makes the loader copy the zImage to 0x20000000 first
           scripts/config --disable CRYPTO_FIPS
+          if [ "${{ inputs.strip }}" = "true" ]; then
+            for o in SEC_DEBUG SEC_DEBUG_SCHED_LOG SEC_DEBUG_SEMAPHORE_LOG SEC_DEBUG_USER SEC_DEBUG_SUBSYS SEC_DEBUG_DOUBLE_FREE SEC_DEBUG_NOCACHE_LOG SEC_DEBUG_NOCACHE_LOG_IN_LEVEL_LOW SEC_DEBUG_LEVEL_LOW SEC_DEBUG_MDM_FILE_INFO SEC_DEBUG_FUPLOAD_DUMP_MORE SEC_DEBUG_TSP_LOG SEC_DEBUG_LOW_LOG TIMA TIMA_LOG TIMA_LKMAUTH TIMA_LKMAUTH_CODE_PROT TIMA_ENABLED SEC_RESTRICT_SETUID SEC_RESTRICT_ROOTING_LOG SEC_RESTRICT_FORK SEC_RESTRICT_ROOTING SEC_PERIPHERAL_SECURE SAMSUNG_KERNEL_DEBUG_USER KERNEL_DEBUG_SEC SEC_SSR_DEBUG_LEVEL_CHK SEC_DEBUG_AUTO_COMMENT SEC_AVC_LOG SEC_DEBUG_MSG_LOG SEC_FORKHANDLER SEC_MODEM_DEBUG; do scripts/config --disable $o; done
+          fi
           yes "" | make HOSTCFLAGS=-fcommon oldconfig > /dev/null
           grep -E "^CONFIG_KERNEL_(XZ|LZO|GZIP|LZMA)=|^CONFIG_MACH_|^CONFIG_SEC_.*PROJECT|CRYPTO_FIPS" .config
           make -j"$(nproc)" HOSTCFLAGS=-fcommon CONFIG_NO_ERROR_ON_MISMATCH=y zImage > ../build.log 2>&1 || {
@@ -86,11 +92,11 @@ jobs:
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
           [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || 'kk_nofips' }}.tar
-          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || 'kk_nofips' }}.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || (inputs.strip == 'true' && 'strip' || 'kk_nofips') }}.tar
+          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || (inputs.strip == 'true' && 'strip' || 'kk_nofips') }}.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || 'kk-nofips' }}
-          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || 'kk_nofips' }}.tar
+          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || (inputs.strip == 'true' && 'strip' || 'kk-nofips') }}
+          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || (inputs.strip == 'true' && 'strip' || 'kk_nofips') }}.tar
           compression-level: 0

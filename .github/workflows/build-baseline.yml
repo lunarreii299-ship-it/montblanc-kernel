@@ -65,6 +65,9 @@ jobs:
             exit 1
           }
           ls -la arch/arm/boot/zImage
+      - name: Compare symbol table with the stock W2014 kernel
+        continue-on-error: true
+        run: python3 tools/symdiff.py boot/stock_syms.txt kernel/System.map | cut -c1-12000
       - name: Control test - stock kernel Image inside this build's loader
         if: ${{ inputs.stock_payload == 'true' }}
         run: |

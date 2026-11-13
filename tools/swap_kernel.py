@@ -12,6 +12,13 @@ r = d[o:o+rsz]; o += n(rsz)
 s = d[o:o+ssz]; o += n(ssz)
 dt = d[o:o+dtsz]
 K = open(kern, 'rb').read()
+import os
+for pair in filter(None, os.environ.get('DT_PATCH', '').split(',')):
+    a, b = pair.split('=')
+    assert len(a) == len(b), 'DT_PATCH strings must have equal length'
+    cnt = dt.count(a.encode() + b'\0')
+    dt = dt.replace(a.encode() + b'\0', b.encode() + b'\0')
+    print('DT_PATCH', a, '->', b, 'x', cnt)
 hdr = bytearray(d[:page])
 if len(sys.argv) > 4:
     hdr[64:576] = sys.argv[4].encode().ljust(512, b'\0')

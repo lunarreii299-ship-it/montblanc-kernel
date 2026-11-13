@@ -8,6 +8,9 @@ on:
       gcc:
         description: "Toolchain: 4.9 (default) or 4.7 (Samsung's own compiler generation)"
         default: "4.9"
+      dt_patch:
+        description: "Same-length string patches inside dt.img, e.g. qcom,lpm-levels=qcom,lpm-levelz (comma separated)"
+        default: ""
       stock_payload:
         description: "Control test: put the STOCK kernel Image inside this build's loader (true/false)"
         default: "false"
@@ -110,15 +113,15 @@ jobs:
           mkdir -p twrp out
           gh run download 42451273149 -R lunarreii299-ship-it/montblanc-twrp -n twrp-sm-w2014 -D twrp
           tar -xf twrp/TWRP_W2014_hyb_gz.tar -C twrp
-          python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img
+          DT_PATCH='${{ inputs.dt_patch }}' python3 tools/swap_kernel.py twrp/recovery.img kernel/arch/arm/boot/zImage out/recovery.img
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
           [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
-          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
+          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk-nofips')) }}
-          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
+          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk-nofips')) }}
+          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
           compression-level: 0

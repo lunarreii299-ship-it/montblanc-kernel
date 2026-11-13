@@ -68,6 +68,11 @@ jobs:
       - name: Compare symbol table with the stock W2014 kernel
         continue-on-error: true
         run: python3 tools/symdiff.py boot/stock_syms.txt kernel/System.map | cut -c1-12000
+      - name: Which device-tree nodes does my kernel not know?
+        continue-on-error: true
+        run: |
+          python3 tools/extract_stock_image.py boot/stock_kernel "$GITHUB_WORKSPACE/stock_Image_cc" >/dev/null
+          python3 tools/compat_check.py boot/stock_dt0.dts kernel/vmlinux "$GITHUB_WORKSPACE/stock_Image_cc" | cut -c1-6000
       - name: Control test - stock kernel Image inside this build's loader
         if: ${{ inputs.stock_payload == 'true' }}
         run: |

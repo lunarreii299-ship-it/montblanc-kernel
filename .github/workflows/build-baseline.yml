@@ -11,6 +11,9 @@ on:
       dt_patch:
         description: "Same-length string patches inside dt.img, e.g. qcom,lpm-levels=qcom,lpm-levelz (separate several with a semicolon)"
         default: ""
+      probe:
+        description: "Diagnostic: freeze (infinite loop) at a point of start_kernel. 1=entry 2=after setup_arch 3=after mm_init 4=after init_IRQ 5=after time_init 6=after console_init 7=before rest_init"
+        default: ""
       stock_payload:
         description: "Control test: put the STOCK kernel Image inside this build's loader (true/false)"
         default: "false"
@@ -52,6 +55,19 @@ jobs:
           export ARCH=arm CROSS_COMPILE=$GITHUB_WORKSPACE/toolchain/bin/arm-linux-androideabi-
           cd kernel
           make HOSTCFLAGS=-fcommon msm8974_sec_defconfig VARIANT_DEFCONFIG=${{ inputs.variant }} SELINUX_DEFCONFIG=selinux_defconfig
+          if [ -n "${{ inputs.probe }}" ]; then
+            case "${{ inputs.probe }}" in
+              1) a='smp_setup_processor_id();';; 2) a='setup_arch(&command_line);';; 3) a='mm_init();';;
+              4) a='init_IRQ();';; 5) a='time_init();';; 6) a='console_init();';; 7) a='rest_init();';;
+            esac
+            r=$(printf '%s' "$a" | sed 's/&/\\&/g')
+            if [ "${{ inputs.probe }}" = 7 ]; then
+              sed -i "0,/^\t$a\$/s//\tfor(;;) ;\n\t$r/" init/main.c
+            else
+              sed -i "0,/^\t$a\$/s//\t$r\n\tfor(;;) ;/" init/main.c
+            fi
+            grep -n -B2 -A2 "for(;;) ;" init/main.c
+          fi
           scripts/config --disable KERNEL_XZ --disable KERNEL_LZO --disable KERNEL_LZMA --enable KERNEL_GZIP
           # Stock W2014 kernel was an ENG build WITHOUT FIPS; FIPS makes the loader copy the zImage to 0x20000000 first
           scripts/config --disable CRYPTO_FIPS
@@ -117,11 +133,11 @@ jobs:
           sz=$(stat -c %s out/recovery.img); echo "recovery.img = $sz (limit $MAX_RECOVERY_BYTES)"
           [ "$sz" -le "$MAX_RECOVERY_BYTES" ] || { echo "TOO LARGE"; exit 1; }
           printf 'SEANDROIDENFORCE' >> out/recovery.img
-          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
-          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
+          tar -H ustar -c -C out recovery.img > RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.probe != '' && 'probe' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
+          sha256sum RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.probe != '' && 'probe' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk-nofips')) }}
-          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
+          name: w2014-recovery-${{ inputs.stock_payload == 'true' && 'control2' || inputs.probe != '' && 'probe' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk-nofips')) }}
+          path: RECOVERY_W2014_${{ inputs.stock_payload == 'true' && 'control2' || inputs.probe != '' && 'probe' || inputs.dt_patch != '' && 'dtpatch' || (inputs.gcc == '4.7' && 'gcc47' || (inputs.strip == 'true' && 'strip' || 'kk_nofips')) }}.tar
           compression-level: 0

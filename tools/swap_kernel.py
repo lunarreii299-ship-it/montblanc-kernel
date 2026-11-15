@@ -13,7 +13,7 @@ s = d[o:o+ssz]; o += n(ssz)
 dt = d[o:o+dtsz]
 K = open(kern, 'rb').read()
 import os
-for pair in filter(None, os.environ.get('DT_PATCH', '').split(',')):
+for pair in filter(None, os.environ.get('DT_PATCH', '').split(';')):
     a, b = pair.split('=')
     assert len(a) == len(b), 'DT_PATCH strings must have equal length'
     cnt = dt.count(a.encode() + b'\0')

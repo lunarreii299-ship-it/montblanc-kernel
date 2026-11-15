@@ -9,7 +9,7 @@ on:
         description: "Toolchain: 4.9 (default) or 4.7 (Samsung's own compiler generation)"
         default: "4.9"
       dt_patch:
-        description: "Same-length string patches inside dt.img, e.g. qcom,lpm-levels=qcom,lpm-levelz (comma separated)"
+        description: "Same-length string patches inside dt.img, e.g. qcom,lpm-levels=qcom,lpm-levelz (separate several with a semicolon)"
         default: ""
       stock_payload:
         description: "Control test: put the STOCK kernel Image inside this build's loader (true/false)"

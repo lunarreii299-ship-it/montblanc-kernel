@@ -27,7 +27,7 @@ jobs:
           ksz,ka,rsz,ra,ssz,sa,tags,page,dtsz=struct.unpack('<9I',d[8:44])
           print('kernel',ksz,hex(ka),'ramdisk',rsz,hex(ra),'dt',dtsz,'page',page,'cmdline',d[64:576].split(b'\0')[0].decode())
           P
-          echo "== sepolicy"; ls -l ramdisk 2>/dev/null; mkdir ../rd && cd ../rd
+          echo "== sepolicy"; mkdir ../rd && cd ../rd
           python3 - <<'P'
           import struct,gzip,io,subprocess
           d=open('../rom/boot.img','rb').read()
@@ -46,3 +46,30 @@ jobs:
               print('sepolicy magic',hex(magic),'policy version',ver)
           P
           echo "== recovery fstab / partition names"; cat system/etc/recovery.fstab 2>/dev/null | head -20; cat ../rd/fstab.qcom 2>/dev/null | head -20; ls ../rd/*.rc | head -30
+      - name: Look inside the system image
+        run: |
+          cd rom
+          cat system.transfer.list
+          python3 - <<'P'
+          import re
+          lines=open('system.transfer.list').read().split('\n')
+          total=int(lines[1]); print('image blocks',total,'=',total*4096//1048576,'MB')
+          out=open('../system.img','wb'); out.truncate(total*4096)
+          src=open('system.new.dat','rb')
+          for l in lines[2:]:
+              m=re.match(r'new (\S+)',l)
+              if not m: continue
+              r=list(map(int,m.group(1).split(',')))[1:]
+              for a,b in zip(r[0::2],r[1::2]):
+                  out.seek(a*4096); out.write(src.read((b-a)*4096))
+          out.close()
+          P
+          sudo mkdir -p /mnt/sys && sudo mount -o loop,ro ../system.img /mnt/sys
+          echo "== system top"; ls /mnt/sys; df -h /mnt/sys | tail -1
+          echo "== du"; sudo du -sh /mnt/sys/* 2>/dev/null | sort -h | tail -12
+          echo "== lib/hw"; ls /mnt/sys/lib/hw | head -60
+          echo "== vendor/lib dirs"; ls /mnt/sys/vendor 2>/dev/null; ls /mnt/sys/vendor/lib 2>/dev/null | wc -l
+          echo "== modules"; find /mnt/sys -name '*.ko' | head
+          echo "== egl"; ls /mnt/sys/lib/egl /mnt/sys/vendor/lib/egl 2>/dev/null
+          echo "== apps"; ls /mnt/sys/app /mnt/sys/priv-app | head -60
+          sudo umount /mnt/sys

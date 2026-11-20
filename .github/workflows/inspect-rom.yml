@@ -1,0 +1,48 @@
+name: Inspect base ROM (CM 12.1 hlte)
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "ROM zip URL"
+        default: "https://archive.org/download/cmarchive_nighlies/cm-12.1-20161016-NIGHTLY-hlte.zip"
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download ROM
+        run: |
+          curl -fL --retry 3 -o rom.zip "${{ inputs.url }}"
+          ls -l rom.zip; sha256sum rom.zip
+      - name: Inspect
+        run: |
+          mkdir rom && cd rom && unzip -q ../rom.zip
+          echo "== top level"; ls -la
+          echo "== system size"; du -sh system; du -sh system/* | sort -h | tail -8
+          echo "== updater-script (head)"; sed -n 1,60p META-INF/com/google/android/updater-script
+          echo "== build.prop (key lines)"; grep -E "ro.build.(version|id|date|display)|ro.product|ro.sf.lcd|ro.carrier|ro.cm.version|persist.sys.dalvik|ro.zygote|ro.opengles" system/build.prop
+          echo "== boot.img"; ls -l boot.img; python3 - <<'P'
+          import struct
+          d=open('boot.img','rb').read()
+          ksz,ka,rsz,ra,ssz,sa,tags,page,dtsz=struct.unpack('<9I',d[8:44])
+          print('kernel',ksz,hex(ka),'ramdisk',rsz,hex(ra),'dt',dtsz,'page',page,'cmdline',d[64:576].split(b'\0')[0].decode())
+          P
+          echo "== sepolicy"; ls -l ramdisk 2>/dev/null; mkdir ../rd && cd ../rd
+          python3 - <<'P'
+          import struct,gzip,io,subprocess
+          d=open('../rom/boot.img','rb').read()
+          ksz,ka,rsz,ra,ssz,sa,tags,page,dtsz=struct.unpack('<9I',d[8:44])
+          n=lambda x:(x+page-1)//page*page
+          r=d[page+n(ksz):page+n(ksz)+rsz]
+          open('ramdisk.gz','wb').write(r)
+          P
+          (gzip -dc ramdisk.gz | cpio -id --quiet 2>/dev/null) || true
+          ls; ls -la sepolicy file_contexts init.rc 2>&1 | head
+          python3 - <<'P'
+          import struct,os
+          if os.path.exists('sepolicy'):
+              d=open('sepolicy','rb').read()
+              magic,l=struct.unpack('<II',d[:8]); ver=struct.unpack('<I',d[8+l:12+l])[0]
+              print('sepolicy magic',hex(magic),'policy version',ver)
+          P
+          echo "== recovery fstab / partition names"; cat system/etc/recovery.fstab 2>/dev/null | head -20; cat ../rd/fstab.qcom 2>/dev/null | head -20; ls ../rd/*.rc | head -30

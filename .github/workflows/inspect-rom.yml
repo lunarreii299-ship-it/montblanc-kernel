@@ -64,12 +64,12 @@ jobs:
                   out.seek(a*4096); out.write(src.read((b-a)*4096))
           out.close()
           P
-          sudo mkdir -p /mnt/sys && sudo mount -o loop,ro ../system.img /mnt/sys
-          echo "== system top"; ls /mnt/sys; df -h /mnt/sys | tail -1
-          echo "== du"; sudo du -sh /mnt/sys/* 2>/dev/null | sort -h | tail -12
-          echo "== lib/hw"; ls /mnt/sys/lib/hw | head -60
-          echo "== vendor/lib dirs"; ls /mnt/sys/vendor 2>/dev/null; ls /mnt/sys/vendor/lib 2>/dev/null | wc -l
-          echo "== modules"; find /mnt/sys -name '*.ko' | head
-          echo "== egl"; ls /mnt/sys/lib/egl /mnt/sys/vendor/lib/egl 2>/dev/null
-          echo "== apps"; ls /mnt/sys/app /mnt/sys/priv-app | head -60
-          sudo umount /mnt/sys
+          file ../system.img; xxd -s 1024 -l 96 ../system.img | head -6
+          D() { debugfs -R "$1" ../system.img 2>&1; }
+          echo "== superblock"; dumpe2fs -h ../system.img 2>&1 | grep -E "features|Block count|Block size|Filesystem" | head
+          echo "== system top"; D "ls /" | head -20
+          echo "== lib/hw"; D "ls /lib/hw" | head -40
+          echo "== egl"; D "ls /lib/egl" | head
+          echo "== vendor"; D "ls /vendor" | head; D "ls /vendor/lib" | head -5
+          echo "== modules"; D "ls /lib/modules" | head
+          echo "== apps"; D "ls /priv-app" | head -40
